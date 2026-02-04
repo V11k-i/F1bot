@@ -22,13 +22,11 @@ export interface meeting {
 }
 
 type YMD = [number, number, number]
-    const s = await nextSession();
-   console.log(s);
    
 /* 
 @returns a formatted string with full official name of the next F1 session, along with the full date
 */
-async function nextSession(): Promise<string> {
+export async function nextSession(): Promise<string> {
     const today = formatDate(new Date()); // today's date formatted as [yyyy,mm,dd]
     const url = `https://api.openf1.org/v1/meetings?year=${today[0]}`;
     const res = await fetch(url);
@@ -38,10 +36,10 @@ async function nextSession(): Promise<string> {
         const startDate = formatDate(m.date_start); // the date of the event for the season
         if( (startDate[1] === today[1] && startDate[2] >= today[2]) || (startDate[1] > today[1])) {
             const properDate = new Date(m.date_start);
-            return `${m.meeting_official_name}\n${new Intl.DateTimeFormat("UTC", {
+            return `Next Formula One Event:\n${m.meeting_official_name}\n${new Intl.DateTimeFormat("UTC", {
         dateStyle: "full",
         timeStyle: "short"
-    }).format(properDate)}`;
+    }).format(properDate)}(UTC Time)`;
         }
     }
     return 'baba';
