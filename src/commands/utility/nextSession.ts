@@ -5,8 +5,8 @@ import { nextSession as getS } from "../../api/f1.js";
 
 
 const nextSession: Command = {
-  data: new SlashCommandBuilder().setName("next_session").setDescription("Outputs next Formula One event scheduled"),
-  execute: async (interaction) => {
+    data: new SlashCommandBuilder().setName("next_session").setDescription("Outputs next Formula One event scheduled"),
+    execute: async (interaction) => {
     const s = await getS();
     await interaction.reply(s);
   },

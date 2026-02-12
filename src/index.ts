@@ -7,11 +7,16 @@ import {
   Collection,
   MessageFlags,
   SlashCommandBuilder,
+  MessageReaction,
+  User,
+  Partials
 } from "discord.js";
-
+import etc from "../etc.json" with { type: "json" };
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url"; // ✅ needed to recreate __dirname in ESM
+
+
 
 // --------------------
 // Types
@@ -43,7 +48,13 @@ const token = process.env.DISCORD_TOKEN;
 if (!token) throw new Error("Missing DISCORD_TOKEN in .env");
 
 const client = new Client({
-  intents: [GatewayIntentBits.Guilds],
+  intents: [GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMembers,
+    GatewayIntentBits.GuildMessageReactions,
+    GatewayIntentBits.GuildMessages
+  ],
+    partials: [Partials.Message, Partials.Channel, Partials.Reaction], // strongly recommended
+
 });
 
 // Create the command registry on the client
@@ -160,3 +171,30 @@ client.on(Events.InteractionCreate, async (interaction) => {
     }
   }
 });
+
+
+// reaction handler
+
+
+client.on("messageReactionAdd", async (reaction, user)  => {
+  console.log('ts works');
+  if(user.bot) return;
+  const chnl = etc["channel-id"];
+  const msg = etc["message-id"];
+  if((reaction.message.id !== msg) || (reaction.message.channelId !== chnl)) return;
+  const reacts = new Map<string, string>([
+    ["🚗","1471447133533114451"]
+  ]);
+  const emojiKey = reaction.emoji.id ?? reaction.emoji.name;
+  if(emojiKey == null ) return;
+  const roleid = reacts.get(emojiKey);
+  if(roleid == null ) return;
+
+  const guild = reaction.message.guild;
+  if (!guild) return;
+  const member = await guild.members.fetch(user.id);
+  await member.roles.add(roleid);
+  console.log('ts works');
+
+})
+
