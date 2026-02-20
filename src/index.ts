@@ -9,7 +9,8 @@ import {
   SlashCommandBuilder,
   MessageReaction,
   User,
-  Partials
+  Partials,
+  SlashCommandOptionsOnlyBuilder
 } from "discord.js";
 import etc from "../etc.json" with { type: "json" };
 import * as fs from "node:fs";
@@ -22,7 +23,7 @@ import { fileURLToPath } from "node:url"; // ✅ needed to recreate __dirname in
 // Types
 // --------------------
 export type Command = {
-  data: SlashCommandBuilder;
+  data: SlashCommandBuilder | SlashCommandOptionsOnlyBuilder;
   execute: (interaction: ChatInputCommandInteraction) => Promise<void>;
 };
 
@@ -175,16 +176,16 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
 // reaction handler
 
-
+const reacts = new Map<string, string>([
+    ["🚗","1471447133533114451"]
+  ]);
 client.on("messageReactionAdd", async (reaction, user)  => {
-  console.log('ts works');
+
   if(user.bot) return;
   const chnl = etc["channel-id"];
   const msg = etc["message-id"];
   if((reaction.message.id !== msg) || (reaction.message.channelId !== chnl)) return;
-  const reacts = new Map<string, string>([
-    ["🚗","1471447133533114451"]
-  ]);
+  
   const emojiKey = reaction.emoji.id ?? reaction.emoji.name;
   if(emojiKey == null ) return;
   const roleid = reacts.get(emojiKey);
@@ -198,3 +199,22 @@ client.on("messageReactionAdd", async (reaction, user)  => {
 
 })
 
+client.on("messageReactionRemove", async (reaction, user)  => {
+
+  if(user.bot) return;
+  const chnl = etc["channel-id"];
+  const msg = etc["message-id"];
+  if((reaction.message.id !== msg) || (reaction.message.channelId !== chnl)) return;
+  
+  const emojiKey = reaction.emoji.id ?? reaction.emoji.name;
+  if(emojiKey == null ) return;
+  const roleid = reacts.get(emojiKey);
+  if(roleid == null ) return;
+
+  const guild = reaction.message.guild;
+  if (!guild) return;
+  const member = await guild.members.fetch(user.id);
+  await member.roles.remove(roleid);
+  console.log('ts works');
+
+})
