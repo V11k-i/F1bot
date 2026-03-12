@@ -7,10 +7,13 @@ import {
   Collection,
   MessageFlags,
   SlashCommandBuilder,
-  MessageReaction,
-  User,
   Partials,
-  SlashCommandOptionsOnlyBuilder
+  SlashCommandOptionsOnlyBuilder,
+  MessageReaction,
+  PartialMessageReaction,
+  User,
+  PartialUser,
+  
 } from "discord.js";
 import etc from "../etc.json" with { type: "json" };
 import * as fs from "node:fs";
@@ -61,12 +64,22 @@ const client = new Client({
 // Create the command registry on the client
 client.commands = new Collection();
 
-client.once(Events.ClientReady, (readyClient) => {
+client.once(Events.ClientReady, async (readyClient) => {
   console.log(`Ready! Logged in as ${readyClient.user.tag}`);
-});
+  console.log(`[REACTION CONFIG] guild=${etc["guild-id"]} channel=${etc["channel-id"]} message=${etc["message-id"]}`);
 
-// Login starts the bot connection
-client.login(token);
+  try {
+    const guild = await readyClient.guilds.fetch(etc["guild-id"]);
+    const channel = await guild.channels.fetch(etc["channel-id"]);
+    const message = channel && "messages" in channel ? await channel.messages.fetch(etc["message-id"]) : null;
+
+    console.log(`[REACTION CONFIG] guild ok: ${guild.id}`);
+    console.log(`[REACTION CONFIG] channel ok: ${channel?.id ?? "missing"}`);
+    console.log(`[REACTION CONFIG] message ok: ${message?.id ?? "missing"}`);
+  } catch (error) {
+    console.error("[REACTION CONFIG] Validation failed:", error);
+  }
+});
 
 // --------------------
 // Command loader
@@ -177,44 +190,118 @@ client.on(Events.InteractionCreate, async (interaction) => {
 // reaction handler
 
 const reacts = new Map<string, string>([
-    ["🚗","1471447133533114451"]
-  ]);
-client.on("messageReactionAdd", async (reaction, user)  => {
+  ["🧟", "1481609879230742750"],
+  ["🏁", "1475870203601621173"],
+  ["🏎️", "1168277415311724636"],
+  ["🏎", "1168277415311724636"]
+]);
 
-  if(user.bot) return;
-  const chnl = etc["channel-id"];
-  const msg = etc["message-id"];
-  if((reaction.message.id !== msg) || (reaction.message.channelId !== chnl)) return;
-  
-  const emojiKey = reaction.emoji.id ?? reaction.emoji.name;
-  if(emojiKey == null ) return;
-  const roleid = reacts.get(emojiKey);
-  if(roleid == null ) return;
+async function getReactionContext(reaction: MessageReaction | PartialMessageReaction, user: User | PartialUser) {
+  if (user.partial) {
+    await user.fetch();
+  }
+
+  if (user.bot) return null;
+
+  if (reaction.partial) {
+    await reaction.fetch();
+  }
+
+  if (reaction.message.partial) {
+    await reaction.message.fetch();
+  }
+
+  const guildId = etc["guild-id"];
+  const channelId = etc["channel-id"];
+  const messageId = etc["message-id"];
+
+  if (reaction.message.guildId !== guildId) {
+    console.log(`[REACTION] Ignored: wrong guild ${reaction.message.guildId}`);
+    return null;
+  }
+
+  if (reaction.message.channelId !== channelId) {
+    console.log(`[REACTION] Ignored: wrong channel ${reaction.message.channelId}`);
+    return null;
+  }
+
+  if (reaction.message.id !== messageId) {
+    console.log(`[REACTION] Ignored: wrong message ${reaction.message.id}`);
+    return null;
+  }
+
+  const emojiKey = reaction.emoji.id ?? reaction.emoji.name?.replace(/\uFE0F/g, "");
+  if (emojiKey == null) {
+    console.log("[REACTION] Ignored: emoji key is null");
+    return null;
+  }
+
+  const roleId = reacts.get(emojiKey);
+  if (roleId == null) {
+    console.log(`[REACTION] Ignored: no role mapped for emoji ${emojiKey}`);
+    return null;
+  }
 
   const guild = reaction.message.guild;
-  if (!guild) return;
+  if (!guild) {
+    console.log("[REACTION] Ignored: guild not found on message");
+    return null;
+  }
+
   const member = await guild.members.fetch(user.id);
-  await member.roles.add(roleid);
-  console.log('ts works');
+  const botMember = await guild.members.fetchMe();
 
-})
+  console.log(`[REACTION] emoji=${emojiKey} role=${roleId} user=${user.id}`);
+  console.log(`[REACTION] member roles highest=${member.roles.highest.position} bot highest=${botMember.roles.highest.position}`);
 
-client.on("messageReactionRemove", async (reaction, user)  => {
+  return { member, botMember, roleId, emojiKey, guild };
+}
 
-  if(user.bot) return;
-  const chnl = etc["channel-id"];
-  const msg = etc["message-id"];
-  if((reaction.message.id !== msg) || (reaction.message.channelId !== chnl)) return;
-  
-  const emojiKey = reaction.emoji.id ?? reaction.emoji.name;
-  if(emojiKey == null ) return;
-  const roleid = reacts.get(emojiKey);
-  if(roleid == null ) return;
+client.on("messageReactionAdd", async (reaction, user) => {
+  try {
+    const context = await getReactionContext(reaction, user);
+    if (!context) return;
 
-  const guild = reaction.message.guild;
-  if (!guild) return;
-  const member = await guild.members.fetch(user.id);
-  await member.roles.remove(roleid);
-  console.log('ts works');
+    const role = await context.guild.roles.fetch(context.roleId);
+    if (!role) {
+      console.log(`[REACTION ADD] Role not found: ${context.roleId}`);
+      return;
+    }
 
-})
+    if (context.botMember.roles.highest.position <= role.position) {
+      console.log(`[REACTION ADD] Bot role is not high enough to add ${role.name}`);
+      return;
+    }
+
+    await context.member.roles.add(context.roleId);
+    console.log(`[REACTION ADD] Added role ${context.roleId} for emoji ${context.emojiKey}`);
+  } catch (error) {
+    console.error("[REACTION ADD] Failed:", error);
+  }
+});
+
+client.on("messageReactionRemove", async (reaction, user) => {
+  try {
+    const context = await getReactionContext(reaction, user);
+    if (!context) return;
+
+    const role = await context.guild.roles.fetch(context.roleId);
+    if (!role) {
+      console.log(`[REACTION REMOVE] Role not found: ${context.roleId}`);
+      return;
+    }
+
+    if (context.botMember.roles.highest.position <= role.position) {
+      console.log(`[REACTION REMOVE] Bot role is not high enough to remove ${role.name}`);
+      return;
+    }
+
+    await context.member.roles.remove(context.roleId);
+    console.log(`[REACTION REMOVE] Removed role ${context.roleId} for emoji ${context.emojiKey}`);
+  } catch (error) {
+    console.error("[REACTION REMOVE] Failed:", error);
+  }
+});
+
+// Login starts the bot connection after all handlers are registered
+client.login(token);
